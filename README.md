@@ -6,9 +6,17 @@ A lightweight, client-side recreation of [mislavcimpersak/xkcd-excuse-generator]
 
 ## Usage
 
-Open `index.html` in a browser. Fill in the three fields and click **Generate!**
+Fill in the three fields and click **Generate!** You can download the result as a PNG or copy it to your clipboard.
 
-You can download the result as a PNG or copy it to your clipboard.
+### Local Development
+
+The font and template image are loaded as relative paths, so you'll need a local server (opening `index.html` directly via `file://` won't work in most browsers due to CORS). The quickest way:
+
+```bash
+npx serve
+```
+
+Then open the URL it prints (usually `http://localhost:3000`).
 
 ## Why?
 

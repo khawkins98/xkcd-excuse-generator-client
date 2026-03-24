@@ -194,7 +194,7 @@
   <div class="container">
     <h1><a href="/">xkcd excuse generator</a></h1>
     <p class="subtitle">Generate your own slacking excuse in xkcd comic style!</p>
-    <p class="disclaimer">Not affiliated with <a href="https://xkcd.com">XKCD</a> or <a href="https://github.com/mislavcimpersak">mislavcimpersak's</a> original <a href="https://github.com/mislavcimpersak/xkcd-excuse-generator">xkcd-excuse-generator</a>. A fun exploration to see how far JS has come nearly 10 years later. <a href="https://github.com/khawkins98/xkcd-excuse-generator-client">Learn more</a>.</p>
+    <p class="disclaimer">Not affiliated with <a href="https://xkcd.com">XKCD</a> or <a href="https://github.com/mislavcimpersak">mislavcimpersak's</a> original <a href="https://github.com/mislavcimpersak/xkcd-excuse-generator">xkcd-excuse-generator</a>. A fun exploration of how far JavaScript has come in nearly 10 years — assembled with AI, no AI involved in image generation. <a href="https://github.com/khawkins98/xkcd-excuse-generator-client">Learn more about the project.</a></p>
 
     <form id="excuse-form" novalidate>
       <div class="form-group">
@@ -288,7 +288,7 @@
 
       // How long to wait after the user stops typing before re-rendering.
       // This avoids thrashing the canvas on every keystroke.
-      const DEBOUNCE_MS = 600;
+      const DEBOUNCE_MS = 400;
 
       // --- Phrase bank for the "Random" button ---
       // Mostly tech/dev excuses since that's the spirit of the original comic,

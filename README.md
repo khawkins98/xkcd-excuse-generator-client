@@ -4,9 +4,21 @@ Generate your own slacking excuse in XKCD comic style — entirely in the browse
 
 A lightweight, client-side recreation of [mislavcimpersak/xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) using HTML5 Canvas. No server, no build step, no dependencies.
 
+> **Disclaimer:** This project is not affiliated with [XKCD](https://xkcd.com), Randall Munroe, or the original [xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) by Mislav Cimperšak. It's a fan recreation built for fun, using their openly licensed assets.
+
+## Features
+
+- **Live preview** — the comic updates as you type (600ms debounce), no need to hit a button
+- **Real-time validation** — text-too-long errors show instantly, measured against actual rendered pixel width
+- **Random excuses** — a built-in phrase bank for quick demos
+- **Download / copy** — save as PNG or copy straight to clipboard
+- **Zero dependencies** — vanilla HTML, CSS, and JS in a single file
+
+None of this is particularly clever. The original project needed a Python backend on AWS Lambda to generate images, and its later frontend shipped ~15MB of Pyodide to run Pillow in the browser. Today, the same thing is a few dozen lines of Canvas API code. There's nothing special here — it's just that in the years since the original went up, this is how much vanilla JavaScript and browser APIs have progressed, and that's kind of neat.
+
 ## Usage
 
-Fill in the three fields and click **Generate!** You can download the result as a PNG or copy it to your clipboard.
+Fill in the three fields and click **Generate!** — or just start typing and watch the preview update live. Hit **🎲 Random** to pull a sample from the phrase bank. Download the result as PNG or copy it to your clipboard.
 
 ### Local Development
 
@@ -16,13 +28,7 @@ The font and template image are loaded as relative paths, so you'll need a local
 npx serve -l tcp://localhost:0
 ```
 
-Then open the URL it prints (usually `http://localhost:3000`).
-
-## Why?
-
-The original project (now offline) used a Python backend on AWS Lambda, and later a Pyodide-based frontend that downloaded ~15MB of Python runtime. This recreation does the same thing with vanilla JS and the Canvas API in under 200KB.
-
-More than anything, this was a just-for-fun project to see how far browser APIs and AI-assisted development have come since the original was built in 2017.
+Then open the URL it prints.
 
 ## Rendering Fidelity
 

@@ -43,9 +43,18 @@
     .subtitle {
       text-align: center;
       color: #666;
-      margin-bottom: 1.5rem;
+      margin-bottom: 0.5rem;
       font-size: 0.95rem;
     }
+
+    .disclaimer {
+      text-align: center;
+      color: #999;
+      font-size: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .disclaimer a { color: #888; }
 
     .form-group {
       margin-bottom: 1rem;
@@ -110,6 +119,13 @@
     }
 
     #generate-btn:hover:not(:disabled) { background: #455a64; }
+
+    #random-btn {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    #random-btn:hover:not(:disabled) { background: #bdbdbd; }
 
     .export-btn {
       background: #e0e0e0;
@@ -178,6 +194,7 @@
   <div class="container">
     <h1><a href="/">xkcd excuse generator</a></h1>
     <p class="subtitle">Generate your own slacking excuse in xkcd comic style!</p>
+    <p class="disclaimer">Not affiliated with <a href="https://xkcd.com">XKCD</a> or the <a href="https://github.com/mislavcimpersak/xkcd-excuse-generator">original project</a>. Just a fan recreation.</p>
 
     <form id="excuse-form" novalidate>
       <div class="form-group">
@@ -200,6 +217,7 @@
 
       <div class="btn-row">
         <button type="submit" id="generate-btn">Generate!</button>
+        <button type="button" id="random-btn">🎲 Random</button>
       </div>
     </form>
 
@@ -245,6 +263,26 @@
       const WHAT_TEXT_Y = 222;
       const FILL_COLOR = 'rgba(0, 0, 0, 0.78)';
       const FONT_FAMILY = 'xkcd-script';
+      const DEBOUNCE_MS = 600;
+
+      // --- Phrase bank ---
+      const PHRASES = [
+        { who: 'programmer', why: 'my code is compiling', what: 'compiling' },
+        { who: 'devops', why: 'my docker image is building', what: 'docker' },
+        { who: 'sysadmin', why: 'the server is rebooting', what: 'rebooting' },
+        { who: 'designer', why: 'my mockups are rendering', what: 'rendering' },
+        { who: 'data scientist', why: 'my model is training', what: 'training' },
+        { who: 'frontend dev', why: 'npm install is running', what: 'installing' },
+        { who: 'dba', why: 'the migration is running', what: 'migrating' },
+        { who: 'qa engineer', why: 'the test suite is running', what: 'testing' },
+        { who: 'manager', why: 'my reports are generating', what: 'reports' },
+        { who: 'student', why: 'my assignment is uploading', what: 'uploading' },
+        { who: 'gamer', why: 'my game is updating', what: 'updating' },
+        { who: 'researcher', why: 'my simulation is running', what: 'simulating' },
+        { who: 'mobile dev', why: 'xcode is indexing', what: 'indexing' },
+        { who: 'security analyst', why: 'the vulnerability scan is running', what: 'scanning' },
+        { who: 'cloud engineer', why: 'terraform is applying', what: 'terraform' },
+      ];
 
       // --- DOM refs ---
       const form = document.getElementById('excuse-form');
@@ -255,6 +293,7 @@
       const errorWhy = document.getElementById('error-why');
       const errorWhat = document.getElementById('error-what');
       const generateBtn = document.getElementById('generate-btn');
+      const randomBtn = document.getElementById('random-btn');
       const canvas = document.getElementById('excuse-canvas');
       const ctx = canvas.getContext('2d');
       const exportRow = document.getElementById('export-row');
@@ -265,11 +304,10 @@
       // --- State ---
       let templateImage = null;
       let fontLoaded = false;
-      let generated = false;
+      let debounceTimer = null;
 
       // --- Init: preload assets ---
       async function init() {
-        // Load font
         try {
           const font = new FontFace(FONT_FAMILY, "url('assets/xkcd-script.ttf')");
           await font.load();
@@ -279,7 +317,6 @@
           console.error('Font loading failed:', e);
         }
 
-        // Load template image
         templateImage = new Image();
         templateImage.src = 'assets/blank_excuse.png';
         await new Promise((resolve, reject) => {
@@ -287,7 +324,6 @@
           templateImage.onerror = reject;
         });
 
-        // Draw blank template on load
         drawBlankTemplate();
       }
 
@@ -301,23 +337,47 @@
       // --- Text helpers ---
       function centerX(text, font) {
         ctx.font = font;
-        const w = ctx.measureText(text).width;
-        return (IMAGE_WIDTH - w) / 2;
+        return (IMAGE_WIDTH - ctx.measureText(text).width) / 2;
       }
 
-      function centerXWithOffset(text, font, offset) {
-        return centerX(text, font) - offset;
-      }
-
-      function textFitsWidth(text, font, maxWidth) {
+      function textWidth(text, font) {
         ctx.font = font;
-        return ctx.measureText(text).width <= maxWidth;
+        return ctx.measureText(text).width;
       }
 
-      // --- Validation ---
-      function clearErrors() {
-        [errorWho, errorWhy, errorWhat].forEach(el => { el.textContent = ''; });
-        [inputWho, inputWhy, inputWhat].forEach(el => { el.classList.remove('invalid'); });
+      // --- Validation (real-time, per-field) ---
+      function validateField(value, formatFn, font, maxWidth, inputEl, errorEl) {
+        inputEl.classList.remove('invalid');
+        errorEl.textContent = '';
+
+        if (!value.trim()) return false; // empty is OK during live typing
+
+        const formatted = formatFn(value.toUpperCase());
+        if (textWidth(formatted, font) > maxWidth) {
+          inputEl.classList.add('invalid');
+          errorEl.textContent = 'Text too long.';
+          return false;
+        }
+        return true;
+      }
+
+      function validateAll(who, why, what) {
+        let valid = true;
+        const whoFont = `24px '${FONT_FAMILY}'`;
+        const whyFont = `22px '${FONT_FAMILY}'`;
+        const whatFont = `18px '${FONT_FAMILY}'`;
+
+        // Required checks (only on explicit submit)
+        if (!who.trim()) { setError(inputWho, errorWho, 'This field is required.'); valid = false; }
+        else if (textWidth(`THE #1  ${who} EXCUSE`, whoFont) > IMAGE_WIDTH) { setError(inputWho, errorWho, 'Text too long.'); valid = false; }
+
+        if (!why.trim()) { setError(inputWhy, errorWhy, 'This field is required.'); valid = false; }
+        else if (textWidth(`"${why}."`, whyFont) > IMAGE_WIDTH) { setError(inputWhy, errorWhy, 'Text too long.'); valid = false; }
+
+        if (!what.trim()) { setError(inputWhat, errorWhat, 'This field is required.'); valid = false; }
+        else if (textWidth(`${what}!`, whatFont) > 135) { setError(inputWhat, errorWhat, 'Text too long.'); valid = false; }
+
+        return valid;
       }
 
       function setError(inputEl, errorEl, msg) {
@@ -325,47 +385,12 @@
         errorEl.textContent = msg;
       }
 
-      function validate(who, why, what) {
-        clearErrors();
-        let valid = true;
-
-        const whoFont = `24px '${FONT_FAMILY}'`;
-        const whyFont = `22px '${FONT_FAMILY}'`;
-        const whatFont = `18px '${FONT_FAMILY}'`;
-
-        const whoText = `THE #1  ${who} EXCUSE`;
-        const whyText = `"${why}."`;
-        const whatText = `${what}!`;
-
-        // Required checks
-        if (!who.trim()) {
-          setError(inputWho, errorWho, 'This field is required.');
-          valid = false;
-        } else if (!textFitsWidth(whoText, whoFont, IMAGE_WIDTH)) {
-          setError(inputWho, errorWho, 'Text too long.');
-          valid = false;
-        }
-
-        if (!why.trim()) {
-          setError(inputWhy, errorWhy, 'This field is required.');
-          valid = false;
-        } else if (!textFitsWidth(whyText, whyFont, IMAGE_WIDTH)) {
-          setError(inputWhy, errorWhy, 'Text too long.');
-          valid = false;
-        }
-
-        if (!what.trim()) {
-          setError(inputWhat, errorWhat, 'This field is required.');
-          valid = false;
-        } else if (!textFitsWidth(whatText, whatFont, 135)) {
-          setError(inputWhat, errorWhat, 'Text too long.');
-          valid = false;
-        }
-
-        return valid;
+      function clearErrors() {
+        [errorWho, errorWhy, errorWhat].forEach(el => { el.textContent = ''; });
+        [inputWho, inputWhy, inputWhat].forEach(el => { el.classList.remove('invalid'); });
       }
 
-      // --- Render excuse ---
+      // --- Render ---
       function renderExcuse(who, why, what) {
         const whoText = `THE #1  ${who} EXCUSE`.toUpperCase();
         const legitText = 'FOR LEGITIMATELY SLACKING OFF:';
@@ -377,10 +402,8 @@
         const whyFont = `22px '${FONT_FAMILY}'`;
         const whatFont = `18px '${FONT_FAMILY}'`;
 
-        // Draw template
         drawBlankTemplate();
 
-        // Draw text
         ctx.fillStyle = FILL_COLOR;
         ctx.textBaseline = 'top';
 
@@ -394,10 +417,50 @@
         ctx.fillText(whyText, centerX(whyText, whyFont), WHY_TEXT_Y);
 
         ctx.font = whatFont;
-        ctx.fillText(whatText, centerXWithOffset(whatText, whatFont, 24), WHAT_TEXT_Y);
+        ctx.fillText(whatText, centerX(whatText, whatFont) - 24, WHAT_TEXT_Y);
 
-        generated = true;
         exportRow.classList.remove('hidden');
+      }
+
+      // --- Live preview (debounced) ---
+      function livePreview() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const who = inputWho.value.toUpperCase();
+          const why = inputWhy.value.toUpperCase();
+          const what = inputWhat.value.toUpperCase();
+
+          // Real-time overflow detection
+          const whoFont = `24px '${FONT_FAMILY}'`;
+          const whyFont = `22px '${FONT_FAMILY}'`;
+          const whatFont = `18px '${FONT_FAMILY}'`;
+
+          validateField(inputWho.value, v => `THE #1  ${v} EXCUSE`, whoFont, IMAGE_WIDTH, inputWho, errorWho);
+          validateField(inputWhy.value, v => `"${v}."`, whyFont, IMAGE_WIDTH, inputWhy, errorWhy);
+          validateField(inputWhat.value, v => `${v}!`, whatFont, 135, inputWhat, errorWhat);
+
+          // Render if all fields have content and none overflow
+          if (who.trim() && why.trim() && what.trim() &&
+              !inputWho.classList.contains('invalid') &&
+              !inputWhy.classList.contains('invalid') &&
+              !inputWhat.classList.contains('invalid')) {
+            renderExcuse(who, why, what);
+          }
+        }, DEBOUNCE_MS);
+      }
+
+      // --- Random phrase ---
+      function fillRandom() {
+        const phrase = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+        inputWho.value = phrase.who;
+        inputWhy.value = phrase.why;
+        inputWhat.value = phrase.what;
+        clearErrors();
+
+        const who = phrase.who.toUpperCase();
+        const why = phrase.why.toUpperCase();
+        const what = phrase.what.toUpperCase();
+        renderExcuse(who, why, what);
       }
 
       // --- Export ---
@@ -429,25 +492,23 @@
       // --- Events ---
       form.addEventListener('submit', function (e) {
         e.preventDefault();
+        clearErrors();
         const who = inputWho.value.toUpperCase();
         const why = inputWhy.value.toUpperCase();
         const what = inputWhat.value.toUpperCase();
 
-        if (validate(who, why, what)) {
+        if (validateAll(who, why, what)) {
           renderExcuse(who, why, what);
         }
       });
 
+      [inputWho, inputWhy, inputWhat].forEach(input => {
+        input.addEventListener('input', livePreview);
+      });
+
+      randomBtn.addEventListener('click', fillRandom);
       downloadBtn.addEventListener('click', downloadPNG);
       copyBtn.addEventListener('click', copyToClipboard);
-
-      // Clear field error on input
-      [inputWho, inputWhy, inputWhat].forEach((input, i) => {
-        input.addEventListener('input', () => {
-          input.classList.remove('invalid');
-          [errorWho, errorWhy, errorWhat][i].textContent = '';
-        });
-      });
 
       // Boot
       init().catch(err => console.error('Init failed:', err));

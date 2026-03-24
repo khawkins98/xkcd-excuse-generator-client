@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XKCD Excuse Generator</title>
+  <style>
+    @font-face {
+      font-family: 'xkcd-script';
+      src: url('assets/xkcd-script.ttf') format('truetype');
+      font-display: swap;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      flex: 1;
+    }
+
+    h1 {
+      font-family: 'xkcd-script', cursive;
+      text-transform: uppercase;
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 0.25rem;
+    }
+
+    h1 a { color: #333; text-decoration: none; }
+    h1 a:hover { color: #555; }
+
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+      font-size: 0.9rem;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 2px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #546e7a;
+    }
+
+    input[type="text"].invalid {
+      border-color: #e53935;
+    }
+
+    .error-msg {
+      color: #e53935;
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+      min-height: 1.2em;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    button {
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: 4px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #generate-btn {
+      background: #546e7a;
+      color: white;
+      flex: 1;
+    }
+
+    #generate-btn:hover:not(:disabled) { background: #455a64; }
+
+    .export-btn {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .export-btn:hover:not(:disabled) { background: #bdbdbd; }
+
+    .canvas-wrapper {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    #excuse-canvas {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #ddd;
+      background: white;
+    }
+
+    .export-row {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .export-row.hidden { display: none; }
+
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+
+    .toast.show { opacity: 1; }
+
+    footer {
+      background: #546e7a;
+      color: #cfd8dc;
+      padding: 1.5rem 1rem;
+      font-size: 0.8rem;
+      line-height: 1.6;
+    }
+
+    footer .footer-inner {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    footer a { color: #eceff1; }
+    footer p { margin-bottom: 0.75rem; }
+    footer p:last-child { margin-bottom: 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1><a href="/">xkcd excuse generator</a></h1>
+    <p class="subtitle">Generate your own slacking excuse in xkcd comic style!</p>
+
+    <form id="excuse-form" novalidate>
+      <div class="form-group">
+        <label for="input-who">Who is slacking?</label>
+        <input type="text" id="input-who" placeholder="programmer" autocomplete="off">
+        <div class="error-msg" id="error-who"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="input-why">What is their excuse?</label>
+        <input type="text" id="input-why" placeholder="my code is compiling" autocomplete="off">
+        <div class="error-msg" id="error-why"></div>
+      </div>
+
+      <div class="form-group">
+        <label for="input-what">What are they shouting?</label>
+        <input type="text" id="input-what" placeholder="compiling" autocomplete="off">
+        <div class="error-msg" id="error-what"></div>
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" id="generate-btn">Generate!</button>
+      </div>
+    </form>
+
+    <div class="canvas-wrapper">
+      <canvas id="excuse-canvas" width="413" height="271"></canvas>
+    </div>
+
+    <div class="export-row hidden" id="export-row">
+      <button class="export-btn" id="download-btn">⬇ Download PNG</button>
+      <button class="export-btn" id="copy-btn">📋 Copy to clipboard</button>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <p>
+        <a href="https://xkcd.com/303/">Original image</a> by Randall Munroe / XKCD —
+        <a href="https://creativecommons.org/licenses/by-nc/2.5/">CC BY-NC 2.5</a>
+      </p>
+      <p>
+        <a href="https://github.com/ipython/xkcd-font">XKCD font</a> by the iPython team —
+        <a href="https://creativecommons.org/licenses/by-nc/3.0/">CC BY-NC 3.0</a>
+      </p>
+      <p>
+        Inspired by <a href="https://github.com/mislavcimpersak/xkcd-excuse-generator">xkcd-excuse-generator</a>
+        by Mislav Cimperšak.
+      </p>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // --- Constants (matching original Python app) ---
+      const IMAGE_WIDTH = 413;
+      const IMAGE_HEIGHT = 271;
+      const WHO_TEXT_Y = 12;
+      const LEGIT_TEXT_Y = 38;
+      const WHY_TEXT_Y = 85;
+      const WHAT_TEXT_Y = 222;
+      const FILL_COLOR = 'rgba(0, 0, 0, 0.78)';
+      const FONT_FAMILY = 'xkcd-script';
+
+      // --- DOM refs ---
+      const form = document.getElementById('excuse-form');
+      const inputWho = document.getElementById('input-who');
+      const inputWhy = document.getElementById('input-why');
+      const inputWhat = document.getElementById('input-what');
+      const errorWho = document.getElementById('error-who');
+      const errorWhy = document.getElementById('error-why');
+      const errorWhat = document.getElementById('error-what');
+      const generateBtn = document.getElementById('generate-btn');
+      const canvas = document.getElementById('excuse-canvas');
+      const ctx = canvas.getContext('2d');
+      const exportRow = document.getElementById('export-row');
+      const downloadBtn = document.getElementById('download-btn');
+      const copyBtn = document.getElementById('copy-btn');
+      const toastEl = document.getElementById('toast');
+
+      // --- State ---
+      let templateImage = null;
+      let fontLoaded = false;
+      let generated = false;
+
+      // --- Init: preload assets ---
+      async function init() {
+        // Load font
+        try {
+          const font = new FontFace(FONT_FAMILY, "url('assets/xkcd-script.ttf')");
+          await font.load();
+          document.fonts.add(font);
+          fontLoaded = true;
+        } catch (e) {
+          console.error('Font loading failed:', e);
+        }
+
+        // Load template image
+        templateImage = new Image();
+        templateImage.src = 'assets/blank_excuse.png';
+        await new Promise((resolve, reject) => {
+          templateImage.onload = resolve;
+          templateImage.onerror = reject;
+        });
+
+        // Draw blank template on load
+        drawBlankTemplate();
+      }
+
+      function drawBlankTemplate() {
+        ctx.clearRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
+        if (templateImage) {
+          ctx.drawImage(templateImage, 0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
+        }
+      }
+
+      // --- Text helpers ---
+      function centerX(text, font) {
+        ctx.font = font;
+        const w = ctx.measureText(text).width;
+        return (IMAGE_WIDTH - w) / 2;
+      }
+
+      function centerXWithOffset(text, font, offset) {
+        return centerX(text, font) - offset;
+      }
+
+      function textFitsWidth(text, font, maxWidth) {
+        ctx.font = font;
+        return ctx.measureText(text).width <= maxWidth;
+      }
+
+      // --- Validation ---
+      function clearErrors() {
+        [errorWho, errorWhy, errorWhat].forEach(el => { el.textContent = ''; });
+        [inputWho, inputWhy, inputWhat].forEach(el => { el.classList.remove('invalid'); });
+      }
+
+      function setError(inputEl, errorEl, msg) {
+        inputEl.classList.add('invalid');
+        errorEl.textContent = msg;
+      }
+
+      function validate(who, why, what) {
+        clearErrors();
+        let valid = true;
+
+        const whoFont = `24px '${FONT_FAMILY}'`;
+        const whyFont = `22px '${FONT_FAMILY}'`;
+        const whatFont = `18px '${FONT_FAMILY}'`;
+
+        const whoText = `THE #1  ${who} EXCUSE`;
+        const whyText = `"${why}."`;
+        const whatText = `${what}!`;
+
+        // Required checks
+        if (!who.trim()) {
+          setError(inputWho, errorWho, 'This field is required.');
+          valid = false;
+        } else if (!textFitsWidth(whoText, whoFont, IMAGE_WIDTH)) {
+          setError(inputWho, errorWho, 'Text too long.');
+          valid = false;
+        }
+
+        if (!why.trim()) {
+          setError(inputWhy, errorWhy, 'This field is required.');
+          valid = false;
+        } else if (!textFitsWidth(whyText, whyFont, IMAGE_WIDTH)) {
+          setError(inputWhy, errorWhy, 'Text too long.');
+          valid = false;
+        }
+
+        if (!what.trim()) {
+          setError(inputWhat, errorWhat, 'This field is required.');
+          valid = false;
+        } else if (!textFitsWidth(whatText, whatFont, 135)) {
+          setError(inputWhat, errorWhat, 'Text too long.');
+          valid = false;
+        }
+
+        return valid;
+      }
+
+      // --- Render excuse ---
+      function renderExcuse(who, why, what) {
+        const whoText = `THE #1  ${who} EXCUSE`.toUpperCase();
+        const legitText = 'FOR LEGITIMATELY SLACKING OFF:';
+        const whyText = `"${why}."`.toUpperCase();
+        const whatText = `${what}!`.toUpperCase();
+
+        const whoFont = `24px '${FONT_FAMILY}'`;
+        const legitFont = `24px '${FONT_FAMILY}'`;
+        const whyFont = `22px '${FONT_FAMILY}'`;
+        const whatFont = `18px '${FONT_FAMILY}'`;
+
+        // Draw template
+        drawBlankTemplate();
+
+        // Draw text
+        ctx.fillStyle = FILL_COLOR;
+        ctx.textBaseline = 'top';
+
+        ctx.font = whoFont;
+        ctx.fillText(whoText, centerX(whoText, whoFont), WHO_TEXT_Y);
+
+        ctx.font = legitFont;
+        ctx.fillText(legitText, centerX(legitText, legitFont), LEGIT_TEXT_Y);
+
+        ctx.font = whyFont;
+        ctx.fillText(whyText, centerX(whyText, whyFont), WHY_TEXT_Y);
+
+        ctx.font = whatFont;
+        ctx.fillText(whatText, centerXWithOffset(whatText, whatFont, 24), WHAT_TEXT_Y);
+
+        generated = true;
+        exportRow.classList.remove('hidden');
+      }
+
+      // --- Export ---
+      function downloadPNG() {
+        const link = document.createElement('a');
+        link.download = 'xkcd-excuse.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      }
+
+      async function copyToClipboard() {
+        try {
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          showToast('Copied to clipboard!');
+        } catch (e) {
+          showToast('Copy failed — try downloading instead.');
+        }
+      }
+
+      function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        setTimeout(() => toastEl.classList.remove('show'), 2000);
+      }
+
+      // --- Events ---
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const who = inputWho.value.toUpperCase();
+        const why = inputWhy.value.toUpperCase();
+        const what = inputWhat.value.toUpperCase();
+
+        if (validate(who, why, what)) {
+          renderExcuse(who, why, what);
+        }
+      });
+
+      downloadBtn.addEventListener('click', downloadPNG);
+      copyBtn.addEventListener('click', copyToClipboard);
+
+      // Clear field error on input
+      [inputWho, inputWhy, inputWhat].forEach((input, i) => {
+        input.addEventListener('input', () => {
+          input.classList.remove('invalid');
+          [errorWho, errorWhy, errorWhat][i].textContent = '';
+        });
+      });
+
+      // Boot
+      init().catch(err => console.error('Init failed:', err));
+    })();
+  </script>
+</body>
+</html>

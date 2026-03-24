@@ -194,7 +194,7 @@
   <div class="container">
     <h1><a href="/">xkcd excuse generator</a></h1>
     <p class="subtitle">Generate your own slacking excuse in xkcd comic style!</p>
-    <p class="disclaimer">Not affiliated with <a href="https://xkcd.com">XKCD</a> or the <a href="https://github.com/mislavcimpersak/xkcd-excuse-generator">original project</a>. Just a fan recreation.</p>
+    <p class="disclaimer">Not affiliated with <a href="https://xkcd.com">XKCD</a> or <a href="https://github.com/mislavcimpersak">mislavcimpersak's</a> original <a href="https://github.com/mislavcimpersak/xkcd-excuse-generator">xkcd-excuse-generator</a>. A fun exploration to see how far JS has come nearly 10 years later. <a href="https://github.com/khawkins98/xkcd-excuse-generator-client">Learn more</a>.</p>
 
     <form id="excuse-form" novalidate>
       <div class="form-group">
@@ -254,18 +254,45 @@
     (function () {
       'use strict';
 
-      // --- Constants (matching original Python app) ---
+      // =========================================================================
+      // XKCD Excuse Generator - Client-Side
+      //
+      // This draws user-supplied text onto the blank xkcd #303 ("Compiling")
+      // comic template using the HTML5 Canvas API. The original project by
+      // mislavcimpersak did this server-side with Python's Pillow library.
+      // We're doing the same thing here, but entirely in the browser.
+      //
+      // How it works:
+      //   1. On page load, we preload the template image and the xkcd-script font
+      //   2. As the user types, we debounce for 600ms, then re-render the canvas
+      //   3. Text is measured with ctx.measureText() to catch overflow in real time
+      //   4. The canvas can be exported as PNG (download or clipboard)
+      // =========================================================================
+
+      // --- Layout constants ---
+      // These come directly from the original Python app's source code.
+      // The template image is 413x360 pixels, and text is positioned at
+      // fixed Y coordinates within it.
       const IMAGE_WIDTH = 413;
       const IMAGE_HEIGHT = 360;
-      const WHO_TEXT_Y = 12;
-      const LEGIT_TEXT_Y = 38;
-      const WHY_TEXT_Y = 85;
-      const WHAT_TEXT_Y = 222;
+      const WHO_TEXT_Y = 12;    // "THE #1 ___ EXCUSE" title line
+      const LEGIT_TEXT_Y = 38;  // "FOR LEGITIMATELY SLACKING OFF:" subtitle
+      const WHY_TEXT_Y = 85;    // The excuse text, in quotes
+      const WHAT_TEXT_Y = 222;  // The shouted word, near the desk figure
+
+      // The original Pillow code uses fill=(0, 0, 0, 200) on a 0-255 scale.
+      // 200/255 ≈ 0.78 opacity.
       const FILL_COLOR = 'rgba(0, 0, 0, 0.78)';
+
       const FONT_FAMILY = 'xkcd-script';
+
+      // How long to wait after the user stops typing before re-rendering.
+      // This avoids thrashing the canvas on every keystroke.
       const DEBOUNCE_MS = 600;
 
-      // --- Phrase bank ---
+      // --- Phrase bank for the "Random" button ---
+      // Mostly tech/dev excuses since that's the spirit of the original comic,
+      // but a few non-dev ones thrown in so it's not too narrow.
       const PHRASES = [
         { who: 'programmer', why: 'my code is compiling', what: 'compiling' },
         { who: 'devops', why: 'my docker image is building', what: 'docker' },
@@ -284,7 +311,7 @@
         { who: 'cloud engineer', why: 'terraform is applying', what: 'terraform' },
       ];
 
-      // --- DOM refs ---
+      // --- DOM references ---
       const form = document.getElementById('excuse-form');
       const inputWho = document.getElementById('input-who');
       const inputWhy = document.getElementById('input-why');
@@ -302,11 +329,17 @@
       const toastEl = document.getElementById('toast');
 
       // --- State ---
-      let templateImage = null;
+      let templateImage = null;  // The blank comic template, loaded once
       let fontLoaded = false;
       let debounceTimer = null;
 
-      // --- Init: preload assets ---
+      // =========================================================================
+      // INIT
+      // Load the font and template image before anything else. We use the
+      // FontFace API to ensure the font is ready before we try to measure or
+      // draw text -- otherwise the browser falls back to a default font and
+      // the measurements are wrong.
+      // =========================================================================
       async function init() {
         try {
           const font = new FontFace(FONT_FAMILY, "url('assets/xkcd-script.ttf')");
@@ -324,9 +357,16 @@
           templateImage.onerror = reject;
         });
 
+        // Show the blank comic so the page doesn't start with an empty white box
         drawBlankTemplate();
       }
 
+      // =========================================================================
+      // CANVAS DRAWING
+      // =========================================================================
+
+      // Resets the canvas to the blank comic template (no text).
+      // Called before every render so we're drawing on a clean slate.
       function drawBlankTemplate() {
         ctx.clearRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
         if (templateImage) {
@@ -334,23 +374,43 @@
         }
       }
 
-      // --- Text helpers ---
+      // Returns the X coordinate that horizontally centers `text` on the canvas
+      // when rendered in `font`. This is the Canvas equivalent of the original's
+      // _get_text_x_position() function.
       function centerX(text, font) {
         ctx.font = font;
         return (IMAGE_WIDTH - ctx.measureText(text).width) / 2;
       }
 
+      // Measures the rendered pixel width of `text` in `font`.
+      // Used for overflow validation -- the original did this with Pillow's
+      // getsize() / getlength() methods.
       function textWidth(text, font) {
         ctx.font = font;
         return ctx.measureText(text).width;
       }
 
-      // --- Validation (real-time, per-field) ---
+      // =========================================================================
+      // VALIDATION
+      //
+      // Two modes:
+      //   - validateField(): per-field, called during live typing. Doesn't
+      //     complain about empty fields (the user might still be filling them in).
+      //   - validateAll(): all fields, called on explicit form submit. Requires
+      //     all fields to be filled.
+      //
+      // Both check text overflow by measuring the formatted string against the
+      // max pixel width for that text slot. The "who" and "why" slots span the
+      // full image width (413px). The "what" slot is smaller (135px) because it
+      // sits next to the desk figure.
+      // =========================================================================
+
       function validateField(value, formatFn, font, maxWidth, inputEl, errorEl) {
         inputEl.classList.remove('invalid');
         errorEl.textContent = '';
 
-        if (!value.trim()) return false; // empty is OK during live typing
+        // During live typing, empty fields aren't errors yet
+        if (!value.trim()) return false;
 
         const formatted = formatFn(value.toUpperCase());
         if (textWidth(formatted, font) > maxWidth) {
@@ -367,7 +427,6 @@
         const whyFont = `22px '${FONT_FAMILY}'`;
         const whatFont = `18px '${FONT_FAMILY}'`;
 
-        // Required checks (only on explicit submit)
         if (!who.trim()) { setError(inputWho, errorWho, 'This field is required.'); valid = false; }
         else if (textWidth(`THE #1  ${who} EXCUSE`, whoFont) > IMAGE_WIDTH) { setError(inputWho, errorWho, 'Text too long.'); valid = false; }
 
@@ -390,7 +449,20 @@
         [inputWho, inputWhy, inputWhat].forEach(el => { el.classList.remove('invalid'); });
       }
 
-      // --- Render ---
+      // =========================================================================
+      // RENDER
+      //
+      // Draws the excuse onto the canvas. The text formatting matches the
+      // original Python app exactly:
+      //   - who  -> "THE #1  {WHO} EXCUSE"  (note: double space after #1)
+      //   - legit -> "FOR LEGITIMATELY SLACKING OFF:"  (always the same)
+      //   - why  -> '"{WHY}."'
+      //   - what -> "{WHAT}!"
+      //
+      // All text is uppercased and centered, except "what" which is offset
+      // 24px to the left (it sits near the desk figure in the comic).
+      // =========================================================================
+
       function renderExcuse(who, why, what) {
         const whoText = `THE #1  ${who} EXCUSE`.toUpperCase();
         const legitText = 'FOR LEGITIMATELY SLACKING OFF:';
@@ -402,10 +474,11 @@
         const whyFont = `22px '${FONT_FAMILY}'`;
         const whatFont = `18px '${FONT_FAMILY}'`;
 
+        // Start fresh each render
         drawBlankTemplate();
 
         ctx.fillStyle = FILL_COLOR;
-        ctx.textBaseline = 'top';
+        ctx.textBaseline = 'top';  // Matches Pillow's default anchor (top-left)
 
         ctx.font = whoFont;
         ctx.fillText(whoText, centerX(whoText, whoFont), WHO_TEXT_Y);
@@ -416,13 +489,23 @@
         ctx.font = whyFont;
         ctx.fillText(whyText, centerX(whyText, whyFont), WHY_TEXT_Y);
 
+        // The "what" text is shifted 24px left of center. In the original code
+        // this was an offset parameter passed to _get_text_x_position().
         ctx.font = whatFont;
         ctx.fillText(whatText, centerX(whatText, whatFont) - 24, WHAT_TEXT_Y);
 
         exportRow.classList.remove('hidden');
       }
 
-      // --- Live preview (debounced) ---
+      // =========================================================================
+      // LIVE PREVIEW
+      //
+      // The original project required a form submit (and originally a round-trip
+      // to AWS Lambda) to see the result. Since we're doing everything client-side,
+      // we can just re-render on every keystroke. The 600ms debounce keeps it
+      // from feeling janky.
+      // =========================================================================
+
       function livePreview() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
@@ -430,7 +513,7 @@
           const why = inputWhy.value.toUpperCase();
           const what = inputWhat.value.toUpperCase();
 
-          // Real-time overflow detection
+          // Check each field for overflow as the user types
           const whoFont = `24px '${FONT_FAMILY}'`;
           const whyFont = `22px '${FONT_FAMILY}'`;
           const whatFont = `18px '${FONT_FAMILY}'`;
@@ -439,7 +522,7 @@
           validateField(inputWhy.value, v => `"${v}."`, whyFont, IMAGE_WIDTH, inputWhy, errorWhy);
           validateField(inputWhat.value, v => `${v}!`, whatFont, 135, inputWhat, errorWhat);
 
-          // Render if all fields have content and none overflow
+          // Only render if all three fields have content and none are overflowing
           if (who.trim() && why.trim() && what.trim() &&
               !inputWho.classList.contains('invalid') &&
               !inputWhy.classList.contains('invalid') &&
@@ -449,21 +532,32 @@
         }, DEBOUNCE_MS);
       }
 
-      // --- Random phrase ---
+      // =========================================================================
+      // RANDOM PHRASE
+      // Picks a random excuse from the phrase bank and renders it immediately.
+      // Mostly exists so people can try the tool without needing to think of
+      // something to type first.
+      // =========================================================================
+
       function fillRandom() {
         const phrase = PHRASES[Math.floor(Math.random() * PHRASES.length)];
         inputWho.value = phrase.who;
         inputWhy.value = phrase.why;
         inputWhat.value = phrase.what;
         clearErrors();
-
-        const who = phrase.who.toUpperCase();
-        const why = phrase.why.toUpperCase();
-        const what = phrase.what.toUpperCase();
-        renderExcuse(who, why, what);
+        renderExcuse(phrase.who.toUpperCase(), phrase.why.toUpperCase(), phrase.what.toUpperCase());
       }
 
-      // --- Export ---
+      // =========================================================================
+      // EXPORT
+      //
+      // Two options:
+      //   - Download: converts the canvas to a data URL and triggers a download
+      //   - Clipboard: uses the async Clipboard API to copy the image as a blob.
+      //     Not all browsers support this (notably Firefox), so we catch errors
+      //     and suggest downloading instead.
+      // =========================================================================
+
       function downloadPNG() {
         const link = document.createElement('a');
         link.download = 'xkcd-excuse.png';
@@ -479,17 +573,23 @@
           ]);
           showToast('Copied to clipboard!');
         } catch (e) {
-          showToast('Copy failed — try downloading instead.');
+          showToast('Copy failed -- try downloading instead.');
         }
       }
 
+      // Brief notification that fades after 2 seconds
       function showToast(msg) {
         toastEl.textContent = msg;
         toastEl.classList.add('show');
         setTimeout(() => toastEl.classList.remove('show'), 2000);
       }
 
-      // --- Events ---
+      // =========================================================================
+      // EVENT WIRING
+      // =========================================================================
+
+      // Explicit form submit (Enter key or button click) -- validates required
+      // fields and renders if everything checks out.
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         clearErrors();
@@ -502,6 +602,7 @@
         }
       });
 
+      // Live preview on every input event (debounced)
       [inputWho, inputWhy, inputWhat].forEach(input => {
         input.addEventListener('input', livePreview);
       });
@@ -510,7 +611,7 @@
       downloadBtn.addEventListener('click', downloadPNG);
       copyBtn.addEventListener('click', copyToClipboard);
 
-      // Boot
+      // Kick things off -- load font and template, then draw the blank comic
       init().catch(err => console.error('Init failed:', err));
     })();
   </script>

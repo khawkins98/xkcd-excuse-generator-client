@@ -13,7 +13,7 @@ Fill in the three fields and click **Generate!** You can download the result as 
 The font and template image are loaded as relative paths, so you'll need a local server (opening `index.html` directly via `file://` won't work in most browsers due to CORS). The quickest way:
 
 ```bash
-npx serve
+npx serve -l tcp://localhost:0
 ```
 
 Then open the URL it prints (usually `http://localhost:3000`).

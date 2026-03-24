@@ -2,87 +2,83 @@
 
 Generate your own slacking excuse in XKCD comic style, entirely in the browser.
 
-This is a client-side recreation of [mislavcimpersak's xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) using the HTML5 Canvas API. It runs as a single HTML file with no server, no build step, and no dependencies.
+This is a client-side recreation of [mislavcimpersak's xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) using the HTML5 Canvas API. Single HTML file. No server, no build step, no dependencies.
 
-> **Disclaimer:** This project is not affiliated with [XKCD](https://xkcd.com), Randall Munroe, or [mislavcimpersak's](https://github.com/mislavcimpersak) original [xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator). It was built as a fun exploration to see how far JavaScript and browser APIs have come in the nearly 10 years since the original was made. Assembled with AI (GitHub Copilot + Claude Opus 4.6) — no AI involved in image generation. You can read more about the approach in the [PRD](PRD.md).
+> **Disclaimer:** Not affiliated with [XKCD](https://xkcd.com), Randall Munroe, or [mislavcimpersak's](https://github.com/mislavcimpersak) original [xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator). Built as a fun exploration of how far browser APIs have come in the nearly 10 years since the original. Assembled with AI (GitHub Copilot + Claude Opus 4.6) — no AI involved in image generation. More in the [PRD](PRD.md).
 
 ## What it does
 
-You type in three fields (who's slacking, what's their excuse, and what are they shouting) and it draws those words onto the blank [xkcd #303 "Compiling"](https://xkcd.com/303/) comic template. The comic updates live as you type. Once you have something you like, download it as a PNG or copy it straight to your clipboard.
+You fill in three fields — who's slacking, what's their excuse, what are they shouting — and it draws those words onto the blank [xkcd #303 "Compiling"](https://xkcd.com/303/) template, live as you type. Download as PNG or copy straight to your clipboard.
 
-The **🎲 Random** button is a small thing worth mentioning. It wasn't really practical in the original architecture — every render was a server round-trip, so pre-loading a phrase bank and firing one off instantly wasn't a natural fit. Here it's just an array and a canvas draw call, so it's trivial.
+The 🎲 Random button is worth a mention. The original required a server round-trip per render, so a phrase bank that fires instantly wasn't a natural fit. Here it's just an array and a canvas draw call.
+
+As you type, the URL updates automatically. Whatever's on screen is always shareable.
+
+## URL state and embedding
+
+The current excuse is stored in query parameters as you type:
+
+```
+?slacking=programmer&excuse=my+code+is+compiling&shouting=compiling
+```
+
+"Copy share link" grabs the current URL. "Copy embed code" generates an iframe snippet:
+
+```html
+<iframe src="https://khawkins98.github.io/xkcd-excuse-generator-client/?slacking=programmer&excuse=my+code+is+compiling&shouting=compiling&ui=false" width="413" height="360" frameborder="0" scrolling="no"></iframe>
+```
+
+`?ui=false` hides the form and shows only the canvas. The "Hide UI" button does the same thing, and the state carries into any link you share. This approach follows the pattern described in [URL as state management](https://www.allaboutken.com/posts/20251226-url-state-management/).
+
+### The one thing the original could do that this can't
+
+The original API returned deterministic image URLs — hex-encoded, Cloudflare-cached — so you could embed an excuse with a plain `<img src="...">` tag. That's genuinely useful. There's no equivalent here because the image only exists in the browser; an iframe is as close as it gets. For most purposes that's fine, but if you specifically need a static image URL, you need a server.
 
 ## Why this exists
 
-[mislavcimpersak](https://github.com/mislavcimpersak) built the original around 2017, originally as a demo for serverless architecture talks in Croatia and Serbia. At the time, the setup was genuinely clever: a Python function on AWS Lambda using Pillow to composite images, deployed with Zappa, fronted by Cloudflare. For 2017, that was a tidy way to run a stateless image generator at near-zero cost.
+[Mislav Cimperšak](https://github.com/mislavcimpersak) built the original in September 2017 for Python meetups in Croatia and Serbia, where he was giving a talk on serverless technology. The excuse generator was the example app. The whole point was the Lambda setup — Python/Pillow on AWS Lambda, packaged with Zappa, fronted by Cloudflare. It was a conference demo first and an excuse generator second.
 
 Here's what that looked like versus this version:
 
 ```mermaid
 flowchart LR
-    subgraph then["2017 — Server-side generation"]
+    subgraph then["2017 — Serverless conference demo"]
         B1[Browser] -->|"who, why, what"| C1[Cloudflare CDN]
         C1 --> D1[AWS API Gateway]
         D1 --> E1["AWS Lambda\nPython · Hug · Pillow"]
         E1 -->|"image URL"| B1
     end
 
-    subgraph now["Now — Client-side generation"]
+    subgraph now["Now — Client-side"]
         B2["Browser\nCanvas API · no server"]
     end
 ```
 
-The serverless approach had real appeal in 2017. Running image generation in a Lambda meant zero servers to manage and costs that scaled to zero when nobody was using it. It was also a neat showcase of what you could do with the then-emerging serverless pattern.
+Canvas has been around since 2004 — Apple added it to WebKit for Dashboard widgets, Firefox got it in 2005, IE finally caught up with IE9 in 2011. By 2017 it was just there. Mislav didn't reach for Canvas because he was building a Lambda demo, not a Canvas demo. The tech was available; it wasn't the point.
 
-In 2025 that same architecture feels like a lot of moving parts for what turns out to be a few canvas draw calls. `drawImage()` paints the template, `measureText()` checks widths, `fillText()` writes the words. The browser has been able to do all of this for years — it just wasn't as obvious a path back then, and the tooling to work this way has gotten much more comfortable.
+That said, a couple of specific APIs this version uses genuinely didn't exist in 2017. `navigator.clipboard.write()` with image blobs only landed in Chrome 66 in May 2018. The `FontFace` API for loading custom fonts into a canvas context was available but new enough that betting on it cross-browser would have been a gamble. None of that is why the original was server-side, but the experience here wasn't fully achievable then either.
 
-This was also an experiment in AI-assisted development. The whole thing was put together using GitHub Copilot in the terminal (powered by Claude Opus 4.6). The prompting and direction came from a human; the actual code and structure came almost entirely from the AI, with only minor corrections needed.
+This was also an experiment in AI-assisted development. Prompting and direction from a human; code almost entirely from the AI (GitHub Copilot in the terminal, powered by Claude Opus 4.6), with only minor corrections needed.
 
 ## Running it locally
 
-The font and template image load as relative paths, so opening `index.html` directly via `file://` won't work in most browsers (CORS restrictions). Easiest fix:
+Font and template image load as relative paths, so opening `index.html` directly via `file://` won't work in most browsers (CORS on local files). Easiest fix:
 
 ```bash
 npx serve -l tcp://localhost:0
 ```
 
-That picks a random open port and prints the URL.
+Picks a random open port and prints the URL.
 
 ## Rendering fidelity
 
-We use the same `blank_excuse.png` template and the same xkcd-script font as the original. The text is drawn with the Canvas 2D API instead of Python's Pillow, so there are small differences in anti-aliasing and kerning. With a handwriting font like xkcd-script, you'd be hard pressed to spot them. If pixel-perfect Pillow output is ever needed, a server-side rendering step could be added back.
+Same `blank_excuse.png` template and `xkcd-script.ttf` font as the original. Text is drawn with Canvas 2D instead of Python's Pillow, so there are small differences in anti-aliasing and kerning. With a handwriting font you'd be hard pressed to notice. If pixel-perfect Pillow output ever matters, a server-side rendering step could be added back.
 
 ## Acknowledgements
 
 The original [xkcd #303 ("Compiling")](https://xkcd.com/303/) comic is by Randall Munroe, released under [CC BY-NC 2.5](https://creativecommons.org/licenses/by-nc/2.5/).
 
-[mislavcimpersak](https://github.com/mislavcimpersak) (Mislav Cimperšak) built the original [xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) and its [frontend](https://github.com/mislavcimpersak/xkcd-excuse-front). The blank template image and the text-placement coordinates come from that work.
-
-The [xkcd-font](https://github.com/ipython/xkcd-font) is by the iPython team, released under [CC BY-NC 3.0](https://creativecommons.org/licenses/by-nc/3.0/).
-
-## License
-
-Released under [CC BY-NC 3.0](https://creativecommons.org/licenses/by-nc/3.0/) to respect the upstream licenses on the comic and font.
-
-## Running it locally
-
-The font and template image load as relative paths, so opening `index.html` directly via `file://` won't work in most browsers (CORS restrictions). Easiest fix:
-
-```bash
-npx serve -l tcp://localhost:0
-```
-
-That picks a random open port and prints the URL.
-
-## Rendering fidelity
-
-We use the same `blank_excuse.png` template and the same xkcd-script font as the original. The text is drawn with the Canvas 2D API instead of Python's Pillow, so there are small differences in anti-aliasing and kerning. With a handwriting font like xkcd-script, you'd be hard pressed to spot them. If pixel-perfect Pillow output is ever needed, a server-side rendering step could be added back.
-
-## Acknowledgements
-
-The original [xkcd #303 ("Compiling")](https://xkcd.com/303/) comic is by Randall Munroe, released under [CC BY-NC 2.5](https://creativecommons.org/licenses/by-nc/2.5/).
-
-[mislavcimpersak](https://github.com/mislavcimpersak) (Mislav Cimperšak) built the original [xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) and its [frontend](https://github.com/mislavcimpersak/xkcd-excuse-front). The blank template image and the text-placement coordinates come from that work.
+[Mislav Cimperšak](https://github.com/mislavcimpersak) built the original [xkcd-excuse-generator](https://github.com/mislavcimpersak/xkcd-excuse-generator) and its [frontend](https://github.com/mislavcimpersak/xkcd-excuse-front). The blank template image and text-placement coordinates come from that work.
 
 The [xkcd-font](https://github.com/ipython/xkcd-font) is by the iPython team, released under [CC BY-NC 3.0](https://creativecommons.org/licenses/by-nc/3.0/).
 

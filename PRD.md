@@ -36,7 +36,7 @@ All fields are required. Text is uppercased.
 
 When the user clicks "Generate", the app:
 
-1. Loads the blank XKCD excuse template image (`blank_excuse.png`, 413×271 px) onto an HTML5 Canvas
+1. Loads the blank XKCD excuse template image (`blank_excuse.png`, 413×360 px) onto an HTML5 Canvas
 2. Loads the `xkcd-script` font (TTF/WOFF)
 3. Draws text at these positions (matching the original's coordinates):
 
@@ -77,7 +77,7 @@ When the user clicks "Generate", the app:
 ```
 index.html          — Single-page app (HTML + inline CSS + inline JS)
 assets/
-  blank_excuse.png  — The blank XKCD #303 template (413×271px, ~20KB)
+  blank_excuse.png  — The blank XKCD #303 template (413×360px, ~20KB)
   xkcd-script.woff2 — XKCD handwriting font (~30KB compressed)
   xkcd-script.ttf   — TTF fallback
 ```
